@@ -1,34 +1,141 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import "./Rentals.css";
 import { Link } from "react-router-dom";
 import {useLocation} from "react-router";
 import logo from "../images/airbnbRed.png";
-import {ConnectButton, Icon, Button} from "web3uikit";
+import {ConnectButton, Icon, Button, useNotification} from "web3uikit";
 import RentalsMap from "../components/RentalsMap";
+import { useMoralis, useWeb3ExecuteFunction } from "react-moralis";
+import User from "../components/User";
+
 
 const Rentals = () => {
   const {state: searchFilters } = useLocation();
-  const { highLight ,setHighLight} = useState();
-  const rentalsList = [
-    {
-      attributes: {
-        city: "New York",
-        unoDescription: "3 Guests • 2 Beds • 2 Rooms",
-        dosDescription: "Wifi • Kitchen • Living Area",
-        imgUrl:
-          "https://ipfs.moralis.io:2053/ipfs/QmS3gdXVcjM72JSGH82ZEvu4D7nS6sYhbi5YyCw8u8z4pE/media/3",
-        lat: "40.716862",
-        long: "-73.999005",
-        name: "Apartment in China Town",
-        pricePerDay: "3",
-      },
-    },
-  ];
+  const [ highLight ,setHighLight] = useState();
+  const {Moralis, account} = useMoralis();
+  const [ rentalsList, setRentalsList] = useState();
+  const [coOrdinates, setCoOrdinates] = useState();
+  const contractProcessor = useWeb3ExecuteFunction();
+  const dispatch = useNotification();
 
-  const cords =[];
-  rentalsList.forEach(function(e){
-    cords.push({lat:e.attributes.lat, lng:e.attributes.long})
-  });
+  const handleSuccess =()=>{
+    dispatch({
+      type: "success",
+      message:`Nice! You are going to ${searchFilters.destination}!!`,
+      title: "Booking Successful",
+      position: "topL"
+    });
+  };
+  
+  function handleError(msg){
+    dispatch({
+      type: "error",
+      message: `${msg}`,
+      title:"Booking Failed",
+      position: "topL"
+    });
+  };
+
+  const handleNoAccount = ()=>{
+    dispatch({
+      type: "error",
+      message: 'You need to connect to wallet to book a rental',
+      title:"Not Connected",
+      position: "topL"
+    });
+  };
+
+  
+  useEffect(() => {
+    const fetchRentalsList = async() =>{
+      const Rentals = Moralis.Object.extend("Rental");
+      const query = new Moralis.Query(Rentals);
+      query.equalTo("city", searchFilters.destination);
+      query.greaterThanOrEqualTo("maxGuests_decimal", searchFilters.guests);
+
+      const result = await query.find();
+
+
+      const cords =[];
+      result.forEach(function(e){
+        cords.push({lat:e.attributes.lat, lng:e.attributes.long})
+      });
+
+      setCoOrdinates(cords);
+      setRentalsList(result);
+    }
+    fetchRentalsList();
+  }, [searchFilters]);
+
+  const bookRental = async function (start, end, id, dayPrice){
+    for ( 
+      let arr = [], dt = new Date(start);
+    dt  <= end;
+    dt.setDate(dt.getDate()+1)
+    ){
+      arr.push(new Date(dt).toISOString().slice(0,10));
+    //yyyy-mm-dd
+    
+    let options = {
+      contractAddress: "0x08F9a49519B956463eea1169131D5D5315Cf2307",
+      functionName: "addDatesBooked",
+      abi: [
+        {
+          "anonymous": false,
+          "inputs": [
+            {
+              "indexed": false,
+              "internalType": "string[]",
+              "name": "datesBooked",
+              "type": "string[]"
+            },
+            {
+              "indexed": false,
+              "internalType": "uint256",
+              "name": "id",
+              "type": "uint256"
+            },
+            {
+              "indexed": false,
+              "internalType": "address",
+              "name": "booker",
+              "type": "address"
+            },
+            {
+              "indexed": false,
+              "internalType": "string",
+              "name": "city",
+              "type": "string"
+            },
+            {
+              "indexed": false,
+              "internalType": "string",
+              "name": "imgUrl",
+              "type": "string"
+            }
+          ],
+          "name": "newDatesBooked",
+          "type": "event"
+        }
+      ],
+      params: {
+        id: id,
+        newBookings: arr,
+      },
+      msgValue: Moralis.Units.ETH(dayPrice * arr.length),
+    }
+
+    await contractProcessor.fetch({
+      params:options,
+      onSuccess:() => {
+        handleSuccess();
+      },
+      onError: (error)=>{
+        handleError(error.data.message)
+      }
+    });
+  }
+  }
 
   return (
     <>
@@ -63,6 +170,7 @@ const Rentals = () => {
           </div>
         </div>
         <div className="lrContainers">
+          <User/>
           <ConnectButton/>
         </div>
       </div>
@@ -87,7 +195,19 @@ const Rentals = () => {
                       {e.attributes.dosDescription}
                     </div>
                     <div className="bottomButton" >
-                      <Button text="Stay Here"/>
+                      <Button 
+                      onClick={()=>{
+                        if(account){
+                          bookRental(
+                            searchFilters.checkIn,
+                            searchFilters.checkOut,
+                            e.attributes.uid_decimal.value.$numberDecimal,
+                            Number(e.attributes.pricePerDay_decimal.value.$numberDecimal)
+                          )}else{
+                            handleNoAccount()
+                          }
+                      }}
+                      text="Stay Here"/>
                       <div className="price" >
                         <Icon fill="#808080" size={10} svg="matic" />{" "}
                         {e.attributes.pricePerDay}/Day
@@ -101,7 +221,7 @@ const Rentals = () => {
           })}
         </div>
         <div className="rentalsContentR">
-          <RentalsMap locations={cords} setHighLight={setHighLight}/>
+          <RentalsMap locations={coOrdinates} setHighLight={setHighLight}/>
         </div>
       </div>
     </>

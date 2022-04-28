@@ -39,4 +39,4 @@ function RentalsMap({locations,google, setHighLight}) {
   );
 }
 
-export default GoogleApiWrapper({apiKey:apiKey}) (RentalsMap);
+export default GoogleApiWrapper({apiKey:""}) (RentalsMap);
