@@ -1,5 +1,6 @@
 # Airbnb-Starter
 
+A decentralized version of airbnb with node, moralis, web3uikit and solidity on polygon(https://polygonscan.com/address/0x6eb1dB80D13E42C3bd1E17fc1141a8000aC93edA). The solidity smart contract was written using the truffle framework while the front end was written using react. Database storage for static file was using ipfs. while storage for bookings and all was on the blockchain.
 
 
 Run yarn to install dependencies and run yarn start to run app.
